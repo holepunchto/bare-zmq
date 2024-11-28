@@ -90,9 +90,9 @@ function ZMQSocket(Base) {
         const [chunks, cb] = this._pendingWrite
 
         while (chunks.length) {
-          const { chunk } = chunks.pop()
+          const chunk = chunks.shift()
 
-          if (binding.sendMessage(this._handle, chunk) === false) {
+          if (binding.sendMessage(this._handle, chunk.chunk) === false) {
             chunks.unshift(chunk)
 
             break
