@@ -1,6 +1,8 @@
-const { Duplex } = require('bare-stream')
+const { Readable, Writable, Duplex } = require('bare-stream')
 const binding = require('./binding')
 const errors = require('./lib/errors')
+
+const empty = Buffer.alloc(0)
 
 exports.Context = class ZMQContext {
   constructor() {
@@ -13,10 +15,6 @@ exports.Context = class ZMQContext {
 
       throw err
     }
-  }
-
-  destroy() {
-    this._handle = null
   }
 }
 
@@ -67,8 +65,8 @@ function ZMQSocket(Base) {
     }
 
     _destroy(err, cb) {
-      this._poller.close()
       this._pendingDestroy = cb
+      this._poller.close()
     }
 
     _onpoll(err, events) {
@@ -108,16 +106,46 @@ function ZMQSocket(Base) {
       }
     }
 
-    _onclose(err) {
+    _onclose() {
       this._handle = null
-      this._pendingDestroy(err)
+      this._pendingDestroy(null)
     }
   }
 }
 
-exports.PairSocket = class ZMQPairSocket extends ZMQSocket(Duplex) {
+class ZMQReadableSocket extends ZMQSocket(Readable) {}
+
+class ZMQWritableSocket extends ZMQSocket(Writable) {}
+
+class ZMQDuplexSocket extends ZMQSocket(Duplex) {}
+
+exports.PairSocket = class ZMQPairSocket extends ZMQDuplexSocket {
   constructor(context, opts) {
     super(context, binding.ZMQ_PAIR, opts)
+  }
+}
+
+exports.PublisherSocket = class ZMQPublisherSocket extends ZMQWritableSocket {
+  constructor(context, opts) {
+    super(context, binding.ZMQ_PUB, opts)
+  }
+}
+
+exports.SubscriberSocket = class ZMQSubscriberSocket extends ZMQReadableSocket {
+  constructor(context, opts) {
+    super(context, binding.ZMQ_SUB, opts)
+  }
+
+  subscribe(prefix = empty) {
+    if (typeof prefix === 'string') prefix = Buffer.from(prefix)
+
+    binding.setSocketOption(this._handle, binding.ZMQ_SUBSCRIBE, prefix)
+  }
+
+  unsubscribe(prefix = empty) {
+    if (typeof prefix === 'string') prefix = Buffer.from(prefix)
+
+    binding.setSocketOption(this._handle, binding.ZMQ_UNSUBSCRIBE, prefix)
   }
 }
 

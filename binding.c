@@ -191,6 +191,46 @@ bare_zmq_socket_connect(js_env_t *env, js_callback_info_t *info) {
 }
 
 static js_value_t *
+bare_zmq_socket_set_option(js_env_t *env, js_callback_info_t *info) {
+  int err;
+
+  size_t argc = 3;
+  js_value_t *argv[3];
+
+  err = js_get_callback_info(env, info, &argc, argv, NULL, NULL);
+  assert(err == 0);
+
+  assert(argc == 3);
+
+  bare_zmq_socket_t *socket;
+  err = js_get_value_external(env, argv[0], (void **) &socket);
+  assert(err == 0);
+
+  int32_t option;
+  err = js_get_value_int32(env, argv[1], &option);
+  assert(err == 0);
+
+  size_t len = 0;
+
+  void *data;
+  err = js_get_typedarray_info(env, argv[2], NULL, &data, &len, NULL, NULL);
+  assert(err == 0);
+
+  err = zmq_setsockopt(socket, option, data, len);
+
+  if (err < 0) {
+    err = uv_translate_sys_error(zmq_errno());
+
+    err = js_throw_error(env, uv_err_name(err), uv_strerror(err));
+    assert(err == 0);
+
+    return NULL;
+  }
+
+  return NULL;
+}
+
+static js_value_t *
 bare_zmq_message_receive(js_env_t *env, js_callback_info_t *info) {
   int err;
 
@@ -508,6 +548,7 @@ bare_zmq_exports(js_env_t *env, js_value_t *exports) {
   V("createSocket", bare_zmq_socket_create)
   V("bindSocket", bare_zmq_socket_bind)
   V("connectSocket", bare_zmq_socket_connect)
+  V("setSocketOption", bare_zmq_socket_set_option)
 
   V("receiveMessage", bare_zmq_message_receive)
   V("sendMessage", bare_zmq_message_send)
@@ -550,6 +591,9 @@ bare_zmq_exports(js_env_t *env, js_value_t *exports) {
   V(ZMQ_DGRAM)
   V(ZMQ_PEER)
   V(ZMQ_CHANNEL)
+
+  V(ZMQ_SUBSCRIBE)
+  V(ZMQ_UNSUBSCRIBE)
 #undef V
 
   return exports;
