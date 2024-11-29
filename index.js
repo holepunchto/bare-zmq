@@ -1,4 +1,5 @@
 const EventEmitter = require('bare-events')
+const stream = require('bare-stream')
 const binding = require('./binding')
 const errors = require('./lib/errors')
 
@@ -79,6 +80,7 @@ class ZMQSocket extends EventEmitter {
   _onclose() {
     this._handle = null
     this._closing.resolve()
+    this.emit('close')
   }
 }
 
@@ -100,6 +102,10 @@ function ZMQReadableSocket(Base) {
         more
       }
     }
+
+    createReadStream() {
+      return new exports.ReadableStream(this)
+    }
   }
 }
 
@@ -119,6 +125,10 @@ function ZMQWritableSocket(Base) {
       if (typeof data === 'string') data = Buffer.from(data)
 
       return binding.sendMessage(this._handle, data, flags)
+    }
+
+    createWriteStream() {
+      return new exports.WritableStream(this)
     }
   }
 }
@@ -208,5 +218,91 @@ class ZMQPoller {
     this._events = events
 
     binding.updatePoller(this._handle, events)
+  }
+}
+
+function ZMQStream(Base) {
+  return class ZMQStream extends Base {
+    constructor(socket, opts) {
+      super(opts)
+
+      this._socket = socket
+      this._socket
+        .on('error', this._onerror.bind(this))
+        .on('close', this._onclose.bind(this))
+    }
+
+    _destroy(err, cb) {
+      this._socket.close().then(cb, cb)
+    }
+
+    _onerror(err) {
+      this.destroy(err)
+    }
+
+    _onclose() {
+      this.destroy()
+    }
+  }
+}
+
+exports.ReadableStream = class ZMQReadableStream extends (
+  ZMQStream(stream.Readable)
+) {
+  constructor(socket) {
+    super(socket)
+
+    this._socket.on('readable', this._onreadable.bind(this))
+  }
+
+  _read() {
+    this._socket.readable = true
+  }
+
+  _onreadable() {
+    while (true) {
+      const message = this._socket.receive()
+
+      if (message === null) return
+
+      if (this.push(message.data) === false) {
+        this._socket.readable = false
+      }
+    }
+  }
+}
+
+exports.WritableStream = class ZMQWritableStream extends (
+  ZMQStream(stream.Writable)
+) {
+  constructor(socket, opts) {
+    super(socket, opts)
+
+    this._queue = null
+    this._socket.on('writable', this._onwritable.bind(this))
+  }
+
+  _writev(chunks, cb) {
+    this._queue = [chunks, cb]
+    this._socket.writable = true
+  }
+
+  _onwritable() {
+    const [messages, cb] = this._queue
+
+    while (messages.length) {
+      const message = messages.shift()
+
+      if (this._socket.send(message.chunk) === false) {
+        messages.unshift(message)
+        break
+      }
+    }
+
+    if (messages.length === 0) {
+      this._queue = null
+      this._socket.writable = false
+      cb(null)
+    }
   }
 }

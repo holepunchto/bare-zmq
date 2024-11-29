@@ -36,6 +36,27 @@ test('pair socket, inproc', (t) => {
   })
 })
 
+test('pair socket, inproc, stream', (t) => {
+  t.plan(1)
+  const ctx = new Context()
+
+  const a = new PairSocket(ctx)
+  t.teardown(() => a.close())
+
+  const b = new PairSocket(ctx)
+  t.teardown(() => b.close())
+
+  const endpoint = 'inproc://foo'
+  b.bind(endpoint)
+  a.connect(endpoint)
+
+  b.createReadStream().on('data', (data) => {
+    t.alike(data, Buffer.from('hello world'))
+  })
+
+  a.createWriteStream().write('hello world')
+})
+
 test('publisher/subscriber socket, inproc', async (t) => {
   t.plan(2)
   const ctx = new Context()
