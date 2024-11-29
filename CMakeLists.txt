@@ -3,11 +3,13 @@ cmake_minimum_required(VERSION 3.25)
 find_package(cmake-bare REQUIRED PATHS node_modules/cmake-bare)
 find_package(cmake-fetch REQUIRED PATHS node_modules/cmake-fetch)
 
-project(bare_zmq C)
+project(bare_zmq C CXX)
 
-set(BUILD_TESTS OFF CACHE BOOL "Build ZeroMQ tests" FORCE)
+set(ZMQ_WIN32_WINNT "0x0A00" CACHE STRING "Windows SDK target" FORCE)
+set(ZMQ_BUILD_TESTS OFF CACHE BOOL "Build ZeroMQ tests" FORCE)
 
-set(ENABLE_PRECOMPILED OFF CACHE BOOL "Enable precompiled headers" FORCE)
+set(BUILD_SHARED OFF CACHE BOOL "Build shared ZeroMQ library" FORCE)
+set(BUILD_SHARED ON CACHE BOOL "Build static ZeroMQ library" FORCE)
 
 fetch_package("github:zeromq/libzmq@4.3.5")
 
