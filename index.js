@@ -111,8 +111,8 @@ function ZMQReadableSocket(Base) {
       }
     }
 
-    createReadStream() {
-      return new exports.ReadableStream(this)
+    createReadStream(opts) {
+      return new exports.ReadableStream(this, opts)
     }
   }
 }
@@ -135,8 +135,8 @@ function ZMQWritableSocket(Base) {
       return binding.sendMessage(this, data, flags)
     }
 
-    createWriteStream() {
-      return new exports.WritableStream(this)
+    createWriteStream(opts) {
+      return new exports.WritableStream(this, opts)
     }
   }
 }
@@ -201,8 +201,8 @@ function ZMQStream(Base) {
 exports.ReadableStream = class ZMQReadableStream extends (
   ZMQStream(stream.Readable)
 ) {
-  constructor(socket) {
-    super(socket)
+  constructor(socket, opts) {
+    super(socket, opts)
 
     this._socket.on('readable', this._onreadable.bind(this))
   }
@@ -219,6 +219,7 @@ exports.ReadableStream = class ZMQReadableStream extends (
 
       if (this.push(message.data) === false) {
         this._socket.readable = false
+        break
       }
     }
   }

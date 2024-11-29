@@ -23,3 +23,4 @@ test('close context with socket', async (t) => {
 
 require('./test/pair')
 require('./test/pub-sub')
+require('./test/req-rep')
