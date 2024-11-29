@@ -87,3 +87,25 @@ test('publisher/subscriber socket, inproc', async (t) => {
     a.writable = false
   })
 })
+
+test('publisher/subscriber socket, inproc, stream', async (t) => {
+  t.plan(1)
+  const ctx = new Context()
+
+  const a = new PublisherSocket(ctx)
+  t.teardown(() => a.close())
+
+  const b = new SubscriberSocket(ctx)
+  t.teardown(() => b.close())
+
+  const endpoint = 'inproc://foo'
+  b.bind(endpoint)
+  b.subscribe('hello')
+  a.connect(endpoint)
+
+  b.createReadStream().on('data', (data) => {
+    t.alike(data, Buffer.from('hello world'))
+  })
+
+  a.createWriteStream().write('hello world')
+})

@@ -131,16 +131,16 @@ exports.PairSocket = class ZMQPairSocket extends ZMQDuplexSocket {
 exports.PublisherSocket = class ZMQPublisherSocket extends (
   ZMQWritableSocket(ZMQSocket)
 ) {
-  constructor(context, opts) {
-    super(context, binding.ZMQ_PUB, opts)
+  constructor(context) {
+    super(context, binding.ZMQ_PUB)
   }
 }
 
 exports.SubscriberSocket = class ZMQSubscriberSocket extends (
   ZMQReadableSocket(ZMQSocket)
 ) {
-  constructor(context, opts) {
-    super(context, binding.ZMQ_SUB, opts)
+  constructor(context) {
+    super(context, binding.ZMQ_SUB)
   }
 
   subscribe(prefix = empty) {
