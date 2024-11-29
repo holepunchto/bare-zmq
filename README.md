@@ -20,11 +20,11 @@ const b = new PairSocket(ctx)
 
 const endpoint = 'inproc://foo'
 
-b.bind(endpoint)
-a.connect(endpoint)
+a.bind(endpoint)
+b.connect(endpoint)
 
-b.createReadStream().on('data', console.log)
-a.createWriteStream().write('hello world')
+a.createReadStream().on('data', console.log)
+b.createWriteStream().write('hello world')
 ```
 
 ## License
