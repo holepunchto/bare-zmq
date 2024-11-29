@@ -292,3 +292,15 @@ exports.SubscriberSocket = class ZMQSubscriberSocket extends (
     binding.setSocketOption(this, binding.ZMQ_UNSUBSCRIBE, prefix)
   }
 }
+
+exports.RequestSocket = class ZMQRequestSocket extends ZMQDuplexSocket {
+  constructor(context) {
+    super(context, binding.ZMQ_REQ)
+  }
+}
+
+exports.ReplySocket = class ZMQReplySocket extends ZMQDuplexSocket {
+  constructor(context) {
+    super(context, binding.ZMQ_REP)
+  }
+}
