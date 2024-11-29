@@ -6,8 +6,24 @@ test('create context', (t) => {
   t.pass()
 })
 
+test('close context', async (t) => {
+  const ctx = new Context()
+  await t.execution(ctx.close())
+})
+
+test('close context with socket', async (t) => {
+  const ctx = new Context()
+
+  const a = new PairSocket(ctx)
+  const closing = ctx.close()
+
+  await a.close()
+  await t.execution(closing)
+})
+
 test('pair socket, inproc', (t) => {
   t.plan(2)
+
   const ctx = new Context()
 
   const a = new PairSocket(ctx)
@@ -38,6 +54,7 @@ test('pair socket, inproc', (t) => {
 
 test('pair socket, inproc, stream', (t) => {
   t.plan(1)
+
   const ctx = new Context()
 
   const a = new PairSocket(ctx)
@@ -59,6 +76,7 @@ test('pair socket, inproc, stream', (t) => {
 
 test('publisher/subscriber socket, inproc', async (t) => {
   t.plan(2)
+
   const ctx = new Context()
 
   const a = new PublisherSocket(ctx)
@@ -90,6 +108,7 @@ test('publisher/subscriber socket, inproc', async (t) => {
 
 test('publisher/subscriber socket, inproc, stream', async (t) => {
   t.plan(1)
+
   const ctx = new Context()
 
   const a = new PublisherSocket(ctx)

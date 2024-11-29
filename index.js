@@ -1,29 +1,46 @@
 const EventEmitter = require('bare-events')
 const stream = require('bare-stream')
 const binding = require('./binding')
+const errors = require('./lib/errors')
 
 const empty = Buffer.alloc(0)
 
 exports.Context = class ZMQContext {
   constructor() {
-    this._destroyed = false
-
     binding.createContext(this)
+
+    this._sockets = new Set()
+    this._closing = null
   }
 
-  destroy() {
-    if (this._destroyed) return
-    this._destroyed = true
+  close() {
+    if (this._closing !== null) return this._closing.promise
 
-    binding.destroyContext(this)
+    this._closing = Promise.withResolvers()
+    this._closeMaybe()
+
+    return this._closing.promise
+  }
+
+  _closeMaybe() {
+    if (this._closing && this._sockets.size === 0) {
+      binding.destroyContext(this)
+
+      this._closing.resolve()
+    }
   }
 }
 
 class ZMQSocket extends EventEmitter {
   constructor(context, type) {
+    if (context._closing) {
+      throw errors.CONTEXT_CLOSED('Context has already closed')
+    }
+
     super()
 
     this._context = context
+    this._context._sockets.add(this)
 
     binding.createSocket(this, context, type)
 
@@ -66,7 +83,11 @@ class ZMQSocket extends EventEmitter {
   _onclose() {
     binding.destroySocket(this)
 
+    this._context._sockets.delete(this)
+    this._context._closeMaybe()
+
     this._closing.resolve()
+
     this.emit('close')
   }
 }
