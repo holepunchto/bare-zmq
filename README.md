@@ -16,19 +16,25 @@ const { Context, PairSocket } = require('bare-zmq')
 const ctx = new Context()
 
 const a = new PairSocket(ctx)
-a.bind('inproc://foo')
-
 const b = new PairSocket(ctx)
-b.connect('inproc://foo')
 
-a.on('data', (msg) => {
+const endpoint = 'inproc://foo'
+b.bind(endpoint)
+a.connect(endpoint)
+
+b.readable = true
+b.on('readable', () => {
+  const msg = b.receive()
+  if (msg === null) return
   console.log(msg)
-
-  a.destroy()
-  b.destroy()
 })
 
-b.write('hello world')
+a.writable = true
+a.on('writable', () => {
+  const sent = a.send('hello world')
+  if (sent === false) return
+  a.writable = false
+})
 ```
 
 ## License
