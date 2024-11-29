@@ -1,21 +1,12 @@
 const EventEmitter = require('bare-events')
 const stream = require('bare-stream')
 const binding = require('./binding')
-const errors = require('./lib/errors')
 
 const empty = Buffer.alloc(0)
 
 exports.Context = class ZMQContext {
   constructor() {
-    try {
-      this._handle = binding.createContext()
-    } catch (err) {
-      if (err.code === 'EMFILE') {
-        throw errors.TOO_MANY_OPEN_FILES()
-      }
-
-      throw err
-    }
+    this._handle = binding.createContext()
   }
 }
 
@@ -24,16 +15,7 @@ class ZMQSocket extends EventEmitter {
     super()
 
     this._context = context
-
-    try {
-      this._handle = binding.createSocket(context._handle, type)
-    } catch (err) {
-      if (err.code === 'EMFILE') {
-        throw errors.TOO_MANY_OPEN_FILES()
-      }
-
-      throw err
-    }
+    this._handle = binding.createSocket(context._handle, type)
 
     this._poller = new ZMQPoller(this)
     this._closing = null
@@ -48,19 +30,11 @@ class ZMQSocket extends EventEmitter {
   }
 
   bind(endpoint) {
-    try {
-      binding.bindSocket(this._handle, endpoint)
-    } catch (err) {
-      throw err
-    }
+    binding.bindSocket(this._handle, endpoint)
   }
 
   connect(endpoint) {
-    try {
-      binding.connectSocket(this._handle, endpoint)
-    } catch (err) {
-      throw err
-    }
+    binding.connectSocket(this._handle, endpoint)
   }
 
   close() {

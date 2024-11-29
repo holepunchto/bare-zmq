@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <bare.h>
+#include <errno.h>
 #include <js.h>
 #include <stdbool.h>
 #include <stdlib.h>
@@ -43,9 +44,9 @@ bare_zmq_context_create(js_env_t *env, js_callback_info_t *info) {
   bare_zmq_context_t *context = zmq_ctx_new();
 
   if (context == NULL) {
-    err = uv_translate_sys_error(zmq_errno());
+    err = zmq_errno();
 
-    err = js_throw_error(env, uv_err_name(err), uv_strerror(err));
+    err = js_throw_error(env, NULL, zmq_strerror(err));
     assert(err == 0);
 
     return NULL;
@@ -91,9 +92,9 @@ bare_zmq_socket_create(js_env_t *env, js_callback_info_t *info) {
   bare_zmq_socket_t *socket = zmq_socket(context, type);
 
   if (socket == NULL) {
-    err = uv_translate_sys_error(zmq_errno());
+    err = zmq_errno();
 
-    err = js_throw_error(env, uv_err_name(err), uv_strerror(err));
+    err = js_throw_error(env, NULL, zmq_strerror(err));
     assert(err == 0);
 
     return NULL;
@@ -135,9 +136,9 @@ bare_zmq_socket_bind(js_env_t *env, js_callback_info_t *info) {
   err = zmq_bind(socket, (const char *) endpoint);
 
   if (err < 0) {
-    err = uv_translate_sys_error(zmq_errno());
+    err = zmq_errno();
 
-    err = js_throw_error(env, uv_err_name(err), uv_strerror(err));
+    err = js_throw_error(env, NULL, zmq_strerror(err));
     assert(err == 0);
 
     return NULL;
@@ -177,9 +178,9 @@ bare_zmq_socket_connect(js_env_t *env, js_callback_info_t *info) {
   err = zmq_connect(socket, (const char *) endpoint);
 
   if (err < 0) {
-    err = uv_translate_sys_error(zmq_errno());
+    err = zmq_errno();
 
-    err = js_throw_error(env, uv_err_name(err), uv_strerror(err));
+    err = js_throw_error(env, NULL, zmq_strerror(err));
     assert(err == 0);
 
     return NULL;
@@ -219,9 +220,9 @@ bare_zmq_socket_set_option(js_env_t *env, js_callback_info_t *info) {
   err = zmq_setsockopt(socket, option, data, len);
 
   if (err < 0) {
-    err = uv_translate_sys_error(zmq_errno());
+    err = zmq_errno();
 
-    err = js_throw_error(env, uv_err_name(err), uv_strerror(err));
+    err = js_throw_error(env, NULL, zmq_strerror(err));
     assert(err == 0);
 
     return NULL;
@@ -255,15 +256,15 @@ bare_zmq_message_receive(js_env_t *env, js_callback_info_t *info) {
   js_value_t *result;
 
   if (err < 0) {
-    err = uv_translate_sys_error(zmq_errno());
+    err = zmq_errno();
 
-    if (err == UV_EAGAIN) {
+    if (err == EAGAIN) {
       err = js_get_null(env, &result);
       assert(err == 0);
     } else {
       result = NULL;
 
-      err = js_throw_error(env, uv_err_name(err), uv_strerror(err));
+      err = js_throw_error(env, NULL, zmq_strerror(err));
       assert(err == 0);
     }
   } else {
@@ -332,14 +333,15 @@ bare_zmq_message_send(js_env_t *env, js_callback_info_t *info) {
   js_value_t *result;
 
   if (err < 0) {
-    err = uv_translate_sys_error(zmq_errno());
+    err = zmq_errno();
 
-    if (err == UV_EAGAIN) {
+    if (err == EAGAIN) {
       err = js_get_boolean(env, false, &result);
       assert(err == 0);
     } else {
       result = NULL;
-      err = js_throw_error(env, uv_err_name(err), uv_strerror(err));
+
+      err = js_throw_error(env, NULL, zmq_strerror(err));
       assert(err == 0);
     }
   } else {
