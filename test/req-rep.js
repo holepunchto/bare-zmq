@@ -21,10 +21,15 @@ test('request/reply socket, inproc', async (t) => {
     const msg = a.receive()
     if (msg === null) return
     t.alike(msg.data, Buffer.from('request from b'))
+    a.readable = false
 
-    const sent = a.send('reply from a')
-    t.is(sent, true)
-    a.writable = false
+    a.writable = true
+    a.on('writable', () => {
+      const sent = a.send('reply from a')
+      if (sent === false) return
+      t.is(sent, true)
+      a.writable = false
+    })
   })
 
   b.writable = true
