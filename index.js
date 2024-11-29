@@ -6,7 +6,16 @@ const empty = Buffer.alloc(0)
 
 exports.Context = class ZMQContext {
   constructor() {
-    this._handle = binding.createContext()
+    this._destroyed = false
+
+    binding.createContext(this)
+  }
+
+  destroy() {
+    if (this._destroyed) return
+    this._destroyed = true
+
+    binding.destroyContext(this)
   }
 }
 
@@ -15,7 +24,8 @@ class ZMQSocket extends EventEmitter {
     super()
 
     this._context = context
-    this._handle = binding.createSocket(context._handle, type)
+
+    binding.createSocket(this, context, type)
 
     this._poller = new ZMQPoller(this)
     this._closing = null
@@ -30,11 +40,11 @@ class ZMQSocket extends EventEmitter {
   }
 
   bind(endpoint) {
-    binding.bindSocket(this._handle, endpoint)
+    binding.bindSocket(this, endpoint)
   }
 
   connect(endpoint) {
-    binding.connectSocket(this._handle, endpoint)
+    binding.connectSocket(this, endpoint)
   }
 
   close() {
@@ -54,7 +64,8 @@ class ZMQSocket extends EventEmitter {
   }
 
   _onclose() {
-    this._handle = null
+    binding.destroySocket(this)
+
     this._closing.resolve()
     this.emit('close')
   }
@@ -67,7 +78,7 @@ function ZMQReadableSocket(Base) {
     }
 
     receive() {
-      const message = binding.receiveMessage(this._handle)
+      const message = binding.receiveMessage(this)
 
       if (message === null) return null
 
@@ -100,7 +111,7 @@ function ZMQWritableSocket(Base) {
 
       if (typeof data === 'string') data = Buffer.from(data)
 
-      return binding.sendMessage(this._handle, data, flags)
+      return binding.sendMessage(this, data, flags)
     }
 
     createWriteStream() {
@@ -135,13 +146,13 @@ exports.SubscriberSocket = class ZMQSubscriberSocket extends (
   subscribe(prefix = empty) {
     if (typeof prefix === 'string') prefix = Buffer.from(prefix)
 
-    binding.setSocketOption(this._handle, binding.ZMQ_SUBSCRIBE, prefix)
+    binding.setSocketOption(this, binding.ZMQ_SUBSCRIBE, prefix)
   }
 
   unsubscribe(prefix = empty) {
     if (typeof prefix === 'string') prefix = Buffer.from(prefix)
 
-    binding.setSocketOption(this._handle, binding.ZMQ_UNSUBSCRIBE, prefix)
+    binding.setSocketOption(this, binding.ZMQ_UNSUBSCRIBE, prefix)
   }
 }
 
@@ -150,12 +161,7 @@ class ZMQPoller {
     this._socket = socket
     this._events = 0
     this._closed = false
-    this._handle = binding.createPoller(
-      socket._handle,
-      socket,
-      socket._onpoll,
-      socket._onclose
-    )
+    this._handle = binding.createPoller(socket, socket._onpoll, socket._onclose)
   }
 
   get readable() {

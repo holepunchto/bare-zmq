@@ -25,7 +25,7 @@ typedef struct {
 } bare_zmq_poller_t;
 
 static void
-bare_zmq__on_context_finalize(js_env_t *env, void *data, void *finalize_hint) {
+bare_zmq__on_context_teardown(void *data) {
   int err;
 
   bare_zmq_context_t *context = (bare_zmq_context_t *) data;
@@ -37,9 +37,27 @@ bare_zmq__on_context_finalize(js_env_t *env, void *data, void *finalize_hint) {
   assert(err == 0);
 }
 
+static void
+bare_zmq__on_context_finalize(js_env_t *env, void *data, void *finalize_hint) {
+  int err;
+
+  bare_zmq__on_context_teardown(data);
+
+  err = js_remove_teardown_callback(env, bare_zmq__on_context_teardown, data);
+  assert(err == 0);
+}
+
 static js_value_t *
 bare_zmq_context_create(js_env_t *env, js_callback_info_t *info) {
   int err;
+
+  size_t argc = 1;
+  js_value_t *argv[1];
+
+  err = js_get_callback_info(env, info, &argc, argv, NULL, NULL);
+  assert(err == 0);
+
+  assert(argc == 1);
 
   bare_zmq_context_t *context = zmq_ctx_new();
 
@@ -52,15 +70,41 @@ bare_zmq_context_create(js_env_t *env, js_callback_info_t *info) {
     return NULL;
   }
 
-  js_value_t *handle;
-  err = js_create_external(env, (void *) context, bare_zmq__on_context_finalize, NULL, &handle);
+  err = js_wrap(env, argv[0], context, bare_zmq__on_context_finalize, NULL, NULL);
   assert(err == 0);
 
-  return handle;
+  err = js_add_teardown_callback(env, bare_zmq__on_context_teardown, (void *) context);
+  assert(err == 0);
+
+  return NULL;
+}
+
+static js_value_t *
+bare_zmq_context_destroy(js_env_t *env, js_callback_info_t *info) {
+  int err;
+
+  size_t argc = 1;
+  js_value_t *argv[1];
+
+  err = js_get_callback_info(env, info, &argc, argv, NULL, NULL);
+  assert(err == 0);
+
+  assert(argc == 1);
+
+  bare_zmq_context_t *context;
+  err = js_remove_wrap(env, argv[0], (void **) &context);
+  assert(err == 0);
+
+  err = js_remove_teardown_callback(env, bare_zmq__on_context_teardown, (void *) context);
+  assert(err == 0);
+
+  bare_zmq__on_context_teardown((void *) context);
+
+  return NULL;
 }
 
 static void
-bare_zmq__on_socket_finalize(js_env_t *env, void *data, void *finalize_hint) {
+bare_zmq__on_socket_teardown(void *data) {
   int err;
 
   bare_zmq_socket_t *socket = (bare_zmq_socket_t *) data;
@@ -69,24 +113,34 @@ bare_zmq__on_socket_finalize(js_env_t *env, void *data, void *finalize_hint) {
   assert(err == 0);
 }
 
+static void
+bare_zmq__on_socket_finalize(js_env_t *env, void *data, void *finalize_hint) {
+  int err;
+
+  bare_zmq__on_socket_teardown(data);
+
+  err = js_remove_teardown_callback(env, bare_zmq__on_socket_teardown, data);
+  assert(err == 0);
+}
+
 static js_value_t *
 bare_zmq_socket_create(js_env_t *env, js_callback_info_t *info) {
   int err;
 
-  size_t argc = 2;
-  js_value_t *argv[2];
+  size_t argc = 3;
+  js_value_t *argv[3];
 
   err = js_get_callback_info(env, info, &argc, argv, NULL, NULL);
   assert(err == 0);
 
-  assert(argc == 2);
+  assert(argc == 3);
 
   bare_zmq_context_t *context;
-  err = js_get_value_external(env, argv[0], (void **) &context);
+  err = js_unwrap(env, argv[1], (void **) &context);
   assert(err == 0);
 
   int32_t type;
-  err = js_get_value_int32(env, argv[1], &type);
+  err = js_get_value_int32(env, argv[2], &type);
   assert(err == 0);
 
   bare_zmq_socket_t *socket = zmq_socket(context, type);
@@ -100,11 +154,37 @@ bare_zmq_socket_create(js_env_t *env, js_callback_info_t *info) {
     return NULL;
   }
 
-  js_value_t *handle;
-  err = js_create_external(env, (void *) socket, bare_zmq__on_socket_finalize, NULL, &handle);
+  err = js_wrap(env, argv[0], (void *) socket, bare_zmq__on_socket_finalize, NULL, NULL);
   assert(err == 0);
 
-  return handle;
+  err = js_add_teardown_callback(env, bare_zmq__on_socket_teardown, (void *) socket);
+  assert(err == 0);
+
+  return NULL;
+}
+
+static js_value_t *
+bare_zmq_socket_destroy(js_env_t *env, js_callback_info_t *info) {
+  int err;
+
+  size_t argc = 1;
+  js_value_t *argv[1];
+
+  err = js_get_callback_info(env, info, &argc, argv, NULL, NULL);
+  assert(err == 0);
+
+  assert(argc == 1);
+
+  bare_zmq_socket_t *socket;
+  err = js_remove_wrap(env, argv[0], (void **) &socket);
+  assert(err == 0);
+
+  err = js_remove_teardown_callback(env, bare_zmq__on_socket_teardown, (void *) socket);
+  assert(err == 0);
+
+  bare_zmq__on_socket_teardown((void *) socket);
+
+  return NULL;
 }
 
 static js_value_t *
@@ -120,7 +200,7 @@ bare_zmq_socket_bind(js_env_t *env, js_callback_info_t *info) {
   assert(argc == 2);
 
   bare_zmq_socket_t *socket;
-  err = js_get_value_external(env, argv[0], (void **) &socket);
+  err = js_unwrap(env, argv[0], (void **) &socket);
   assert(err == 0);
 
   size_t endpoint_len;
@@ -162,7 +242,7 @@ bare_zmq_socket_connect(js_env_t *env, js_callback_info_t *info) {
   assert(argc == 2);
 
   bare_zmq_socket_t *socket;
-  err = js_get_value_external(env, argv[0], (void **) &socket);
+  err = js_unwrap(env, argv[0], (void **) &socket);
   assert(err == 0);
 
   size_t endpoint_len;
@@ -204,7 +284,7 @@ bare_zmq_socket_set_option(js_env_t *env, js_callback_info_t *info) {
   assert(argc == 3);
 
   bare_zmq_socket_t *socket;
-  err = js_get_value_external(env, argv[0], (void **) &socket);
+  err = js_unwrap(env, argv[0], (void **) &socket);
   assert(err == 0);
 
   int32_t option;
@@ -244,7 +324,7 @@ bare_zmq_message_receive(js_env_t *env, js_callback_info_t *info) {
   assert(argc == 1);
 
   bare_zmq_socket_t *socket;
-  err = js_get_value_external(env, argv[0], (void **) &socket);
+  err = js_unwrap(env, argv[0], (void **) &socket);
   assert(err == 0);
 
   zmq_msg_t msg;
@@ -311,7 +391,7 @@ bare_zmq_message_send(js_env_t *env, js_callback_info_t *info) {
   assert(argc == 3);
 
   bare_zmq_socket_t *socket;
-  err = js_get_value_external(env, argv[0], (void **) &socket);
+  err = js_unwrap(env, argv[0], (void **) &socket);
   assert(err == 0);
 
   size_t len = 0;
@@ -452,16 +532,16 @@ static js_value_t *
 bare_zmq_poller_create(js_env_t *env, js_callback_info_t *info) {
   int err;
 
-  size_t argc = 4;
-  js_value_t *argv[4];
+  size_t argc = 3;
+  js_value_t *argv[3];
 
   err = js_get_callback_info(env, info, &argc, argv, NULL, NULL);
   assert(err == 0);
 
-  assert(argc == 4);
+  assert(argc == 3);
 
   bare_zmq_socket_t *socket;
-  err = js_get_value_external(env, argv[0], (void **) &socket);
+  err = js_unwrap(env, argv[0], (void **) &socket);
   assert(err == 0);
 
   js_value_t *handle;
@@ -486,13 +566,13 @@ bare_zmq_poller_create(js_env_t *env, js_callback_info_t *info) {
   err = uv_poll_init_socket(loop, &poller->handle, poller->socket);
   assert(err == 0);
 
-  err = js_create_reference(env, argv[1], 1, &poller->ctx);
+  err = js_create_reference(env, argv[0], 1, &poller->ctx);
   assert(err == 0);
 
-  err = js_create_reference(env, argv[2], 1, &poller->on_poll);
+  err = js_create_reference(env, argv[1], 1, &poller->on_poll);
   assert(err == 0);
 
-  err = js_create_reference(env, argv[3], 1, &poller->on_close);
+  err = js_create_reference(env, argv[2], 1, &poller->on_close);
   assert(err == 0);
 
   err = js_add_deferred_teardown_callback(env, bare_zmq__on_poller_teardown, (void *) poller, &poller->teardown);
@@ -565,8 +645,10 @@ bare_zmq_exports(js_env_t *env, js_value_t *exports) {
   }
 
   V("createContext", bare_zmq_context_create)
+  V("destroyContext", bare_zmq_context_destroy)
 
   V("createSocket", bare_zmq_socket_create)
+  V("destroySocket", bare_zmq_socket_destroy)
   V("bindSocket", bare_zmq_socket_bind)
   V("connectSocket", bare_zmq_socket_connect)
   V("setSocketOption", bare_zmq_socket_set_option)
