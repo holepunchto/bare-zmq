@@ -6,47 +6,63 @@ test('create context', (t) => {
   t.pass()
 })
 
-test('pair socket', (t) => {
-  t.plan(1)
+test('pair socket, inproc', (t) => {
+  t.plan(2)
   const ctx = new Context()
-
-  const endpoint = 'inproc://foo'
 
   const a = new PairSocket(ctx)
-  a.bind(endpoint)
+  t.teardown(() => a.close())
 
   const b = new PairSocket(ctx)
-  b.connect(endpoint)
+  t.teardown(() => b.close())
 
-  a.on('data', (msg) => {
-    t.alike(msg, Buffer.from('hello world'))
+  const endpoint = 'inproc://foo'
+  b.bind(endpoint)
+  a.connect(endpoint)
 
-    a.destroy()
-    b.destroy()
+  b.readable = true
+  b.on('readable', () => {
+    const msg = b.receive()
+    if (msg === null) return
+    t.alike(msg, { data: Buffer.from('hello world'), more: false })
   })
 
-  b.write('hello world')
+  a.writable = true
+  a.on('writable', () => {
+    const sent = a.send('hello world')
+    if (sent === false) return
+    t.is(sent, true)
+    a.writable = false
+  })
 })
 
-test('publisher/subscriber socket', (t) => {
-  t.plan(1)
+test('publisher/subscriber socket, inproc', async (t) => {
+  t.plan(2)
   const ctx = new Context()
 
-  const endpoint = 'tcp://127.0.0.1:5556'
-
   const a = new PublisherSocket(ctx)
-  a.bind(endpoint)
+  t.teardown(() => a.close())
 
   const b = new SubscriberSocket(ctx)
-  b.connect(endpoint)
+  t.teardown(() => b.close())
+
+  const endpoint = 'inproc://foo'
+  b.bind(endpoint)
   b.subscribe('hello')
+  a.connect(endpoint)
 
-  b.on('data', (msg) => {
-    t.alike(msg, Buffer.from('hello world'))
-
-    a.destroy()
-    b.destroy()
+  b.readable = true
+  b.on('readable', () => {
+    const msg = b.receive()
+    if (msg === null) return
+    t.alike(msg, { data: Buffer.from('hello world'), more: false })
   })
 
-  setTimeout(() => a.write('hello world'), 10)
+  a.writable = true
+  a.on('writable', () => {
+    const sent = a.send('hello world')
+    if (sent === false) return
+    t.is(sent, true)
+    a.writable = false
+  })
 })

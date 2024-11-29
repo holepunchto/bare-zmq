@@ -269,11 +269,26 @@ bare_zmq_message_receive(js_env_t *env, js_callback_info_t *info) {
   } else {
     size_t len = zmq_msg_size(&msg);
 
+    js_value_t *handle;
+
     void *data;
-    err = js_create_arraybuffer(env, len, &data, &result);
+    err = js_create_arraybuffer(env, len, &data, &handle);
     assert(err == 0);
 
     memcpy(data, zmq_msg_data(&msg), len);
+
+    js_value_t *more;
+    err = js_get_boolean(env, zmq_msg_more(&msg), &more);
+    assert(err == 0);
+
+    err = js_create_object(env, &result);
+    assert(err == 0);
+
+    err = js_set_named_property(env, result, "data", handle);
+    assert(err == 0);
+
+    err = js_set_named_property(env, result, "more", more);
+    assert(err == 0);
   }
 
   err = zmq_msg_close(&msg);
@@ -286,13 +301,13 @@ static js_value_t *
 bare_zmq_message_send(js_env_t *env, js_callback_info_t *info) {
   int err;
 
-  size_t argc = 2;
-  js_value_t *argv[2];
+  size_t argc = 3;
+  js_value_t *argv[3];
 
   err = js_get_callback_info(env, info, &argc, argv, NULL, NULL);
   assert(err == 0);
 
-  assert(argc == 2);
+  assert(argc == 3);
 
   bare_zmq_socket_t *socket;
   err = js_get_value_external(env, argv[0], (void **) &socket);
@@ -304,11 +319,15 @@ bare_zmq_message_send(js_env_t *env, js_callback_info_t *info) {
   err = js_get_typedarray_info(env, argv[1], NULL, &data, &len, NULL, NULL);
   assert(err == 0);
 
+  int32_t flags;
+  err = js_get_value_int32(env, argv[2], &flags);
+  assert(err == 0);
+
   zmq_msg_t msg;
   err = zmq_msg_init_buffer(&msg, data, len);
   assert(err == 0);
 
-  err = zmq_msg_send(&msg, socket, ZMQ_DONTWAIT);
+  err = zmq_msg_send(&msg, socket, ZMQ_DONTWAIT | flags);
 
   js_value_t *result;
 
@@ -591,6 +610,8 @@ bare_zmq_exports(js_env_t *env, js_value_t *exports) {
   V(ZMQ_DGRAM)
   V(ZMQ_PEER)
   V(ZMQ_CHANNEL)
+
+  V(ZMQ_SNDMORE)
 
   V(ZMQ_SUBSCRIBE)
   V(ZMQ_UNSUBSCRIBE)

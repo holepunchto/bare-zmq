@@ -30,7 +30,7 @@
   },
   "homepage": "https://github.com/holepunchto/bare-zmq#readme",
   "dependencies": {
-    "bare-stream": "^2.4.2"
+    "bare-events": "^2.5.0"
   },
   "devDependencies": {
     "brittle": "^3.4.0",

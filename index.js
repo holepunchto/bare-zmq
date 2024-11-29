@@ -1,4 +1,4 @@
-const { Readable, Writable, Duplex } = require('bare-stream')
+const EventEmitter = require('bare-events')
 const binding = require('./binding')
 const errors = require('./lib/errors')
 
@@ -18,120 +18,134 @@ exports.Context = class ZMQContext {
   }
 }
 
-function ZMQSocket(Base) {
-  return class ZMQSocket extends Base {
-    constructor(context, type, opts) {
-      super(opts)
+class ZMQSocket extends EventEmitter {
+  constructor(context, type) {
+    super()
 
-      try {
-        this._handle = binding.createSocket(context._handle, type)
-      } catch (err) {
-        if (err.code === 'EMFILE') {
-          throw errors.TOO_MANY_OPEN_FILES()
-        }
-
-        throw err
+    try {
+      this._handle = binding.createSocket(context._handle, type)
+    } catch (err) {
+      if (err.code === 'EMFILE') {
+        throw errors.TOO_MANY_OPEN_FILES()
       }
 
-      this._poller = new ZMQPoller(this)
-
-      this._pendingWrite = null
-      this._pendingDestroy = null
+      throw err
     }
 
-    bind(endpoint) {
-      try {
-        binding.bindSocket(this._handle, endpoint)
-      } catch (err) {
-        throw err
+    this._poller = new ZMQPoller(this)
+    this._closing = null
+  }
+
+  get readable() {
+    return this._poller.readable
+  }
+
+  get writable() {
+    return this._poller.writable
+  }
+
+  bind(endpoint) {
+    try {
+      binding.bindSocket(this._handle, endpoint)
+    } catch (err) {
+      throw err
+    }
+  }
+
+  connect(endpoint) {
+    try {
+      binding.connectSocket(this._handle, endpoint)
+    } catch (err) {
+      throw err
+    }
+  }
+
+  close() {
+    if (this._closing !== null) return this._closing.promise
+
+    this._closing = Promise.withResolvers()
+    this._poller.close()
+
+    return this._closing.promise
+  }
+
+  _onpoll(err, events) {
+    if (err) return this.emit('error', err)
+
+    if (events & binding.UV_READABLE) this.emit('readable')
+    if (events & binding.UV_WRITABLE) this.emit('writable')
+  }
+
+  _onclose() {
+    this._handle = null
+    this._closing.resolve()
+  }
+}
+
+function ZMQReadableSocket(Base) {
+  return class ZMQReadableSocket extends Base {
+    set readable(readable) {
+      this._poller.readable = readable
+    }
+
+    receive() {
+      const message = binding.receiveMessage(this._handle)
+
+      if (message === null) return null
+
+      const { data, more } = message
+
+      return {
+        data: Buffer.from(data),
+        more
       }
-    }
-
-    connect(endpoint) {
-      try {
-        binding.connectSocket(this._handle, endpoint)
-      } catch (err) {
-        throw err
-      }
-    }
-
-    _read() {
-      this._poller.readable = true
-    }
-
-    _writev(chunks, cb) {
-      this._pendingWrite = [chunks, cb]
-      this._poller.writable = true
-    }
-
-    _destroy(err, cb) {
-      this._pendingDestroy = cb
-      this._poller.close()
-    }
-
-    _onpoll(err, events) {
-      if (err) return this._socket.destroy(err)
-
-      if (events & binding.UV_READABLE) {
-        while (true) {
-          const message = binding.receiveMessage(this._handle)
-
-          if (message === null) break
-
-          if (this.push(Buffer.from(message)) === false) {
-            this._poller.readable = false
-          }
-        }
-      }
-
-      if (events & binding.UV_WRITABLE) {
-        const [chunks, cb] = this._pendingWrite
-
-        while (chunks.length) {
-          const chunk = chunks.shift()
-
-          if (binding.sendMessage(this._handle, chunk.chunk) === false) {
-            chunks.unshift(chunk)
-
-            break
-          }
-        }
-
-        if (chunks.length === 0) {
-          this._pendingWrite = null
-          this._poller.writable = false
-
-          cb(null)
-        }
-      }
-    }
-
-    _onclose() {
-      this._handle = null
-      this._pendingDestroy(null)
     }
   }
 }
 
-class ZMQReadableSocket extends ZMQSocket(Readable) {}
+function ZMQWritableSocket(Base) {
+  return class ZMQWritableSocket extends Base {
+    set writable(writable) {
+      this._poller.writable = writable
+    }
 
-class ZMQWritableSocket extends ZMQSocket(Writable) {}
+    send(data, opts = {}) {
+      const { more = false } = opts
 
-class ZMQDuplexSocket extends ZMQSocket(Duplex) {}
+      let flags = 0
 
-exports.PairSocket = class ZMQPairSocket extends ZMQDuplexSocket {
-  constructor(context, opts) {
-    super(context, binding.ZMQ_PAIR, opts)
+      if (more) flags |= binding.ZMQ_SNDMORE
+
+      if (typeof data === 'string') data = Buffer.from(data)
+
+      return binding.sendMessage(this._handle, data, flags)
+    }
   }
 }
 
-exports.PublisherSocket = class ZMQPublisherSocket extends ZMQWritableSocket {
+function ZMQDuplexSocket(Base) {
+  return class ZMQDuplexSocket extends ZMQReadableSocket(
+    ZMQWritableSocket(Base)
+  ) {}
+}
+
+exports.PairSocket = class ZMQPairSocket extends ZMQDuplexSocket(ZMQSocket) {
+  constructor(context) {
+    super(context, binding.ZMQ_PAIR)
+  }
+}
+
+exports.PublisherSocket = class ZMQPublisherSocket extends (
+  ZMQWritableSocket(ZMQSocket)
+) {
   constructor(context, opts) {
     super(context, binding.ZMQ_PUB, opts)
   }
 }
 
-exports.SubscriberSocket = class ZMQSubscriberSocket extends ZMQReadableSocket {
+exports.SubscriberSocket = class ZMQSubscriberSocket extends (
+  ZMQReadableSocket(ZMQSocket)
+) {
   constructor(context, opts) {
     super(context, binding.ZMQ_SUB, opts)
   }
@@ -153,6 +167,7 @@ class ZMQPoller {
   constructor(socket) {
     this._socket = socket
     this._events = 0
+    this._closed = false
     this._handle = binding.createPoller(
       socket._handle,
       socket,
@@ -178,10 +193,15 @@ class ZMQPoller {
   }
 
   close() {
+    if (this._closed) return
+    this._closed = true
+
     binding.closePoller(this._handle)
   }
 
   _update(readable, writable) {
+    if (this._closed) return
+
     let events = 0
 
     if (readable) events |= binding.UV_READABLE

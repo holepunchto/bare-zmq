@@ -1,6 +1,6 @@
 # bare-zmq
 
-ZeroMQ bindings for JavaScript.
+Low-level ZeroMQ bindings for JavaScript.
 
 ```
 npm i bare-zmq
