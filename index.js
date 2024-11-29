@@ -23,6 +23,8 @@ class ZMQSocket extends EventEmitter {
   constructor(context, type) {
     super()
 
+    this._context = context
+
     try {
       this._handle = binding.createSocket(context._handle, type)
     } catch (err) {
