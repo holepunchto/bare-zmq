@@ -49,11 +49,11 @@ class ZMQSocket extends EventEmitter {
   }
 
   get readable() {
-    return this._poller.readable
+    return (this._poller._events & binding.UV_READABLE) !== 0
   }
 
   get writable() {
-    return this._poller.writable
+    return (this._poller._events & binding.UV_WRITABLE) !== 0
   }
 
   bind(endpoint) {
@@ -68,7 +68,7 @@ class ZMQSocket extends EventEmitter {
     if (this._closing !== null) return this._closing.promise
 
     this._closing = Promise.withResolvers()
-    this._poller.close()
+    this._poller._close()
 
     return this._closing.promise
   }
@@ -95,7 +95,7 @@ class ZMQSocket extends EventEmitter {
 function ZMQReadableSocket(Base) {
   return class ZMQReadableSocket extends Base {
     set readable(readable) {
-      this._poller.readable = readable
+      this._poller._update(readable, this.writable)
     }
 
     receive() {
@@ -120,7 +120,7 @@ function ZMQReadableSocket(Base) {
 function ZMQWritableSocket(Base) {
   return class ZMQWritableSocket extends Base {
     set writable(writable) {
-      this._poller.writable = writable
+      this._poller._update(this.readable, writable)
     }
 
     send(data, opts = {}) {
@@ -143,65 +143,14 @@ function ZMQWritableSocket(Base) {
 
 class ZMQDuplexSocket extends ZMQReadableSocket(ZMQWritableSocket(ZMQSocket)) {}
 
-exports.PairSocket = class ZMQPairSocket extends ZMQDuplexSocket {
-  constructor(context) {
-    super(context, binding.ZMQ_PAIR)
-  }
-}
-
-exports.PublisherSocket = class ZMQPublisherSocket extends (
-  ZMQWritableSocket(ZMQSocket)
-) {
-  constructor(context) {
-    super(context, binding.ZMQ_PUB)
-  }
-}
-
-exports.SubscriberSocket = class ZMQSubscriberSocket extends (
-  ZMQReadableSocket(ZMQSocket)
-) {
-  constructor(context) {
-    super(context, binding.ZMQ_SUB)
-  }
-
-  subscribe(prefix = empty) {
-    if (typeof prefix === 'string') prefix = Buffer.from(prefix)
-
-    binding.setSocketOption(this, binding.ZMQ_SUBSCRIBE, prefix)
-  }
-
-  unsubscribe(prefix = empty) {
-    if (typeof prefix === 'string') prefix = Buffer.from(prefix)
-
-    binding.setSocketOption(this, binding.ZMQ_UNSUBSCRIBE, prefix)
-  }
-}
-
 class ZMQPoller {
   constructor(socket) {
-    this._socket = socket
     this._events = 0
     this._closed = false
     this._handle = binding.createPoller(socket, socket._onpoll, socket._onclose)
   }
 
-  get readable() {
-    return (this._events & binding.UV_READABLE) !== 0
-  }
-
-  set readable(readable) {
-    this._update(readable, this.writable)
-  }
-
-  get writable() {
-    return (this._events & binding.UV_WRITABLE) !== 0
-  }
-
-  set writable(writable) {
-    this._update(this.readable, writable)
-  }
-
-  close() {
+  _close() {
     if (this._closed) return
     this._closed = true
 
@@ -307,5 +256,39 @@ exports.WritableStream = class ZMQWritableStream extends (
       this._socket.writable = false
       cb(null)
     }
+  }
+}
+
+exports.PairSocket = class ZMQPairSocket extends ZMQDuplexSocket {
+  constructor(context) {
+    super(context, binding.ZMQ_PAIR)
+  }
+}
+
+exports.PublisherSocket = class ZMQPublisherSocket extends (
+  ZMQWritableSocket(ZMQSocket)
+) {
+  constructor(context) {
+    super(context, binding.ZMQ_PUB)
+  }
+}
+
+exports.SubscriberSocket = class ZMQSubscriberSocket extends (
+  ZMQReadableSocket(ZMQSocket)
+) {
+  constructor(context) {
+    super(context, binding.ZMQ_SUB)
+  }
+
+  subscribe(prefix = empty) {
+    if (typeof prefix === 'string') prefix = Buffer.from(prefix)
+
+    binding.setSocketOption(this, binding.ZMQ_SUBSCRIBE, prefix)
+  }
+
+  unsubscribe(prefix = empty) {
+    if (typeof prefix === 'string') prefix = Buffer.from(prefix)
+
+    binding.setSocketOption(this, binding.ZMQ_UNSUBSCRIBE, prefix)
   }
 }
