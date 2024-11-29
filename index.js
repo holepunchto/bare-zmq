@@ -123,13 +123,9 @@ function ZMQWritableSocket(Base) {
   }
 }
 
-function ZMQDuplexSocket(Base) {
-  return class ZMQDuplexSocket extends ZMQReadableSocket(
-    ZMQWritableSocket(Base)
-  ) {}
-}
+class ZMQDuplexSocket extends ZMQReadableSocket(ZMQWritableSocket(ZMQSocket)) {}
 
-exports.PairSocket = class ZMQPairSocket extends ZMQDuplexSocket(ZMQSocket) {
+exports.PairSocket = class ZMQPairSocket extends ZMQDuplexSocket {
   constructor(context) {
     super(context, binding.ZMQ_PAIR)
   }
