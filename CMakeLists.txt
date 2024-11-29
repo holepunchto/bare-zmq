@@ -5,7 +5,9 @@ find_package(cmake-fetch REQUIRED PATHS node_modules/cmake-fetch)
 
 project(bare_zmq C)
 
-set(ZMQ_BUILD_TESTS OFF CACHE BOOL "Build ZeroMQ tests" FORCE)
+set(BUILD_TESTS OFF CACHE BOOL "Build ZeroMQ tests" FORCE)
+
+set(ENABLE_PRECOMPILED OFF CACHE BOOL "Enable precompiled headers" FORCE)
 
 fetch_package("github:zeromq/libzmq@4.3.5")
 
