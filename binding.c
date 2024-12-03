@@ -122,6 +122,56 @@ bare_zmq_context_destroy(js_env_t *env, js_callback_info_t *info) {
   return NULL;
 }
 
+static js_value_t *
+bare_zmq_context_serialize(js_env_t *env, js_callback_info_t *info) {
+  int err;
+
+  size_t argc = 1;
+  js_value_t *argv[1];
+
+  err = js_get_callback_info(env, info, &argc, argv, NULL, NULL);
+  assert(err == 0);
+
+  assert(argc == 1);
+
+  bare_zmq_context_t *context;
+  err = js_unwrap(env, argv[0], (void **) &context);
+  assert(err == 0);
+
+  context->refs++;
+
+  js_value_t *result;
+  err = js_create_external(env, (void *) context, NULL, NULL, &result);
+  assert(err == 0);
+
+  return result;
+}
+
+static js_value_t *
+bare_zmq_context_deserialize(js_env_t *env, js_callback_info_t *info) {
+  int err;
+
+  size_t argc = 2;
+  js_value_t *argv[2];
+
+  err = js_get_callback_info(env, info, &argc, argv, NULL, NULL);
+  assert(err == 0);
+
+  assert(argc == 2);
+
+  bare_zmq_context_t *context;
+  err = js_get_value_external(env, argv[0], (void **) &context);
+  assert(err == 0);
+
+  err = js_wrap(env, argv[1], context, bare_zmq__on_context_finalize, NULL, NULL);
+  assert(err == 0);
+
+  err = js_add_teardown_callback(env, bare_zmq__on_context_teardown, (void *) context);
+  assert(err == 0);
+
+  return NULL;
+}
+
 static void
 bare_zmq__on_socket_teardown(void *data) {
   int err;
@@ -674,6 +724,8 @@ bare_zmq_exports(js_env_t *env, js_value_t *exports) {
 
   V("createContext", bare_zmq_context_create)
   V("destroyContext", bare_zmq_context_destroy)
+  V("serializeContext", bare_zmq_context_serialize)
+  V("deserializeContext", bare_zmq_context_deserialize)
 
   V("createSocket", bare_zmq_socket_create)
   V("destroySocket", bare_zmq_socket_destroy)

@@ -53,3 +53,41 @@ test('pair socket, inproc, stream', (t) => {
 
   a.createWriteStream().write('hello world')
 })
+
+test('pair socket, inproc, threaded', (t) => {
+  t.plan(1)
+
+  const ctx = new Context()
+
+  const b = new PairSocket(ctx)
+  b.bind('inproc://foo')
+
+  b.readable = true
+  b.on('readable', () => {
+    const msg = b.receive()
+    if (msg === null) return
+    t.alike(msg.data, Buffer.from('hello world'))
+    b.close()
+  })
+
+  const data = ctx.toExternal()
+
+  const thread = Bare.Thread.create(__filename, { data }, (external) => {
+    const { Context, PairSocket } = require('..')
+
+    const ctx = Context.from(external)
+
+    const a = new PairSocket(ctx)
+    a.connect('inproc://foo')
+
+    a.writable = true
+    a.on('writable', () => {
+      const sent = a.send('hello world')
+      if (sent === false) return
+      a.writable = false
+      a.close()
+    })
+  })
+
+  thread.join()
+})

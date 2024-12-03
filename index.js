@@ -6,8 +6,12 @@ const errors = require('./lib/errors')
 const empty = Buffer.alloc(0)
 
 exports.Context = class ZMQContext {
-  constructor() {
-    binding.createContext(this)
+  constructor(external = null) {
+    if (external === null) {
+      binding.createContext(this)
+    } else {
+      binding.deserializeContext(external, this)
+    }
 
     this._sockets = new Set()
     this._closing = null
@@ -28,6 +32,22 @@ exports.Context = class ZMQContext {
 
       this._closing.resolve()
     }
+  }
+
+  toExternal() {
+    return binding.serializeContext(this)
+  }
+
+  static from(external) {
+    return new this(external)
+  }
+
+  [Symbol.for('bare.serialize')]() {
+    return this.toExternal()
+  }
+
+  static [Symbol.for('bare.deserialize')](external) {
+    return this.from(external)
   }
 }
 
