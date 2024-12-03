@@ -62,10 +62,16 @@ class ZMQSocket extends EventEmitter {
     this._context = context
     this._context._sockets.add(this)
 
+    this._endpoint = null
+    this._closing = null
+
     binding.createSocket(this, context, type)
 
     this._poller = new ZMQPoller(this)
-    this._closing = null
+  }
+
+  get endpoint() {
+    return this._endpoint
   }
 
   get readable() {
@@ -77,11 +83,11 @@ class ZMQSocket extends EventEmitter {
   }
 
   bind(endpoint) {
-    binding.bindSocket(this, endpoint)
+    this._endpoint = binding.bindSocket(this, endpoint)
   }
 
   connect(endpoint) {
-    binding.connectSocket(this, endpoint)
+    this._endpoint = binding.connectSocket(this, endpoint)
   }
 
   close() {
@@ -302,15 +308,11 @@ exports.SubscriberSocket = class ZMQSubscriberSocket extends (
   }
 
   subscribe(prefix = empty) {
-    if (typeof prefix === 'string') prefix = Buffer.from(prefix)
-
-    binding.setSocketOption(this, binding.ZMQ_SUBSCRIBE, prefix)
+    setSocketOption(this, binding.ZMQ_SUBSCRIBE, prefix)
   }
 
   unsubscribe(prefix = empty) {
-    if (typeof prefix === 'string') prefix = Buffer.from(prefix)
-
-    binding.setSocketOption(this, binding.ZMQ_UNSUBSCRIBE, prefix)
+    setSocketOption(this, binding.ZMQ_UNSUBSCRIBE, prefix)
   }
 }
 
@@ -324,4 +326,16 @@ exports.ReplySocket = class ZMQReplySocket extends ZMQDuplexSocket {
   constructor(context) {
     super(context, binding.ZMQ_REP)
   }
+}
+
+function getSocketOption(socket, option, data = Buffer.alloc(1024)) {
+  const length = binding.getSocketOption(socket, option, data)
+
+  return data.subarray(0, length)
+}
+
+function setSocketOption(socket, option, data) {
+  if (typeof data === 'string') data = Buffer.from(data)
+
+  binding.setSocketOption(socket, option, data)
 }

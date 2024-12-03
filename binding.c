@@ -304,7 +304,16 @@ bare_zmq_socket_bind(js_env_t *env, js_callback_info_t *info) {
 
   free(endpoint);
 
-  return NULL;
+  utf8_t assigned[1024];
+  size_t assigned_len = 1024;
+  err = zmq_getsockopt(socket->handle, ZMQ_LAST_ENDPOINT, assigned, &assigned_len);
+  assert(err == 0);
+
+  js_value_t *result;
+  err = js_create_string_utf8(env, assigned, assigned_len, &result);
+  assert(err == 0);
+
+  return result;
 }
 
 static js_value_t *
@@ -346,7 +355,60 @@ bare_zmq_socket_connect(js_env_t *env, js_callback_info_t *info) {
 
   free(endpoint);
 
-  return NULL;
+  utf8_t assigned[1024];
+  size_t assigned_len = 1024;
+  err = zmq_getsockopt(socket->handle, ZMQ_LAST_ENDPOINT, assigned, &assigned_len);
+  assert(err == 0);
+
+  js_value_t *result;
+  err = js_create_string_utf8(env, assigned, assigned_len, &result);
+  assert(err == 0);
+
+  return result;
+}
+
+static js_value_t *
+bare_zmq_socket_get_option(js_env_t *env, js_callback_info_t *info) {
+  int err;
+
+  size_t argc = 3;
+  js_value_t *argv[3];
+
+  err = js_get_callback_info(env, info, &argc, argv, NULL, NULL);
+  assert(err == 0);
+
+  assert(argc == 3);
+
+  bare_zmq_socket_t *socket;
+  err = js_unwrap(env, argv[0], (void **) &socket);
+  assert(err == 0);
+
+  int32_t option;
+  err = js_get_value_int32(env, argv[1], &option);
+  assert(err == 0);
+
+  size_t len = 0;
+
+  void *data;
+  err = js_get_typedarray_info(env, argv[2], NULL, &data, &len, NULL, NULL);
+  assert(err == 0);
+
+  err = zmq_getsockopt(socket->handle, option, data, &len);
+
+  if (err < 0) {
+    err = zmq_errno();
+
+    err = js_throw_error(env, NULL, zmq_strerror(err));
+    assert(err == 0);
+
+    return NULL;
+  }
+
+  js_value_t *result;
+  err = js_create_int64(env, len, &result);
+  assert(err == 0);
+
+  return result;
 }
 
 static js_value_t *
@@ -731,6 +793,7 @@ bare_zmq_exports(js_env_t *env, js_value_t *exports) {
   V("destroySocket", bare_zmq_socket_destroy)
   V("bindSocket", bare_zmq_socket_bind)
   V("connectSocket", bare_zmq_socket_connect)
+  V("getSocketOption", bare_zmq_socket_get_option)
   V("setSocketOption", bare_zmq_socket_set_option)
 
   V("receiveMessage", bare_zmq_message_receive)
