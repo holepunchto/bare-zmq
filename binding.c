@@ -2,14 +2,24 @@
 #include <bare.h>
 #include <errno.h>
 #include <js.h>
+#include <stdatomic.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 #include <uv.h>
 #include <zmq.h>
 
-typedef void *bare_zmq_context_t;
-typedef void *bare_zmq_socket_t;
+typedef struct {
+  void *handle;
+
+  atomic_int refs;
+} bare_zmq_context_t;
+
+typedef struct {
+  void *handle;
+
+  atomic_int refs;
+} bare_zmq_socket_t;
 
 typedef struct {
   uv_poll_t handle;
@@ -30,11 +40,15 @@ bare_zmq__on_context_teardown(void *data) {
 
   bare_zmq_context_t *context = (bare_zmq_context_t *) data;
 
-  err = zmq_ctx_shutdown(context);
-  assert(err == 0);
+  if (--context->refs == 0) {
+    err = zmq_ctx_shutdown(context->handle);
+    assert(err == 0);
 
-  err = zmq_ctx_term(context);
-  assert(err == 0);
+    err = zmq_ctx_term(context->handle);
+    assert(err == 0);
+
+    free(context);
+  }
 }
 
 static void
@@ -59,9 +73,9 @@ bare_zmq_context_create(js_env_t *env, js_callback_info_t *info) {
 
   assert(argc == 1);
 
-  bare_zmq_context_t *context = zmq_ctx_new();
+  void *handle = zmq_ctx_new();
 
-  if (context == NULL) {
+  if (handle == NULL) {
     err = zmq_errno();
 
     err = js_throw_error(env, NULL, zmq_strerror(err));
@@ -69,6 +83,11 @@ bare_zmq_context_create(js_env_t *env, js_callback_info_t *info) {
 
     return NULL;
   }
+
+  bare_zmq_context_t *context = malloc(sizeof(bare_zmq_context_t));
+
+  context->handle = handle;
+  context->refs = 1;
 
   err = js_wrap(env, argv[0], context, bare_zmq__on_context_finalize, NULL, NULL);
   assert(err == 0);
@@ -109,8 +128,12 @@ bare_zmq__on_socket_teardown(void *data) {
 
   bare_zmq_socket_t *socket = (bare_zmq_socket_t *) data;
 
-  err = zmq_close(socket);
-  assert(err == 0);
+  if (--socket->refs == 0) {
+    err = zmq_close(socket->handle);
+    assert(err == 0);
+
+    free(socket);
+  }
 }
 
 static void
@@ -143,9 +166,9 @@ bare_zmq_socket_create(js_env_t *env, js_callback_info_t *info) {
   err = js_get_value_int32(env, argv[2], &type);
   assert(err == 0);
 
-  bare_zmq_socket_t *socket = zmq_socket(context, type);
+  void *handle = zmq_socket(context->handle, type);
 
-  if (socket == NULL) {
+  if (handle == NULL) {
     err = zmq_errno();
 
     err = js_throw_error(env, NULL, zmq_strerror(err));
@@ -153,6 +176,11 @@ bare_zmq_socket_create(js_env_t *env, js_callback_info_t *info) {
 
     return NULL;
   }
+
+  bare_zmq_socket_t *socket = malloc(sizeof(bare_zmq_socket_t));
+
+  socket->handle = handle;
+  socket->refs = 1;
 
   err = js_wrap(env, argv[0], (void *) socket, bare_zmq__on_socket_finalize, NULL, NULL);
   assert(err == 0);
@@ -213,7 +241,7 @@ bare_zmq_socket_bind(js_env_t *env, js_callback_info_t *info) {
   err = js_get_value_string_utf8(env, argv[1], endpoint, endpoint_len, NULL);
   assert(err == 0);
 
-  err = zmq_bind(socket, (const char *) endpoint);
+  err = zmq_bind(socket->handle, (const char *) endpoint);
 
   if (err < 0) {
     err = zmq_errno();
@@ -255,7 +283,7 @@ bare_zmq_socket_connect(js_env_t *env, js_callback_info_t *info) {
   err = js_get_value_string_utf8(env, argv[1], endpoint, endpoint_len, NULL);
   assert(err == 0);
 
-  err = zmq_connect(socket, (const char *) endpoint);
+  err = zmq_connect(socket->handle, (const char *) endpoint);
 
   if (err < 0) {
     err = zmq_errno();
@@ -297,7 +325,7 @@ bare_zmq_socket_set_option(js_env_t *env, js_callback_info_t *info) {
   err = js_get_typedarray_info(env, argv[2], NULL, &data, &len, NULL, NULL);
   assert(err == 0);
 
-  err = zmq_setsockopt(socket, option, data, len);
+  err = zmq_setsockopt(socket->handle, option, data, len);
 
   if (err < 0) {
     err = zmq_errno();
@@ -331,7 +359,7 @@ bare_zmq_message_receive(js_env_t *env, js_callback_info_t *info) {
   err = zmq_msg_init(&msg);
   assert(err == 0);
 
-  err = zmq_msg_recv(&msg, socket, ZMQ_DONTWAIT);
+  err = zmq_msg_recv(&msg, socket->handle, ZMQ_DONTWAIT);
 
   js_value_t *result;
 
@@ -408,7 +436,7 @@ bare_zmq_message_send(js_env_t *env, js_callback_info_t *info) {
   err = zmq_msg_init_buffer(&msg, data, len);
   assert(err == 0);
 
-  err = zmq_msg_send(&msg, socket, ZMQ_DONTWAIT | flags);
+  err = zmq_msg_send(&msg, socket->handle, ZMQ_DONTWAIT | flags);
 
   js_value_t *result;
 
@@ -554,7 +582,7 @@ bare_zmq_poller_create(js_env_t *env, js_callback_info_t *info) {
   poller->exiting = false;
 
   size_t len = sizeof(uv_os_sock_t);
-  err = zmq_getsockopt(socket, ZMQ_FD, &poller->socket, &len);
+  err = zmq_getsockopt(socket->handle, ZMQ_FD, &poller->socket, &len);
   assert(err == 0);
 
   assert(len == sizeof(uv_os_sock_t));
