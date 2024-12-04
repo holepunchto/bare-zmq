@@ -13,6 +13,8 @@ set(ZMQ_BUILD_TESTS OFF CACHE BOOL "Build ZeroMQ tests" FORCE)
 
 set(ENABLE_PRECOMPILED OFF CACHE BOOL "Enable precompiled headers" FORCE)
 
+set(ENABLE_WS OFF CACHE BOOL "Enable WebSocket transport" FORCE)
+
 fetch_package("github:zeromq/libzmq@4.3.5")
 
 add_bare_module(bare_zmq)
