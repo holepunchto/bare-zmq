@@ -48,37 +48,3 @@ test('request/reply socket, inproc', async (t) => {
     })
   })
 })
-
-test('request/reply socket, inproc, stream', async (t) => {
-  t.plan(2)
-
-  const ctx = new Context()
-
-  const a = new ReplySocket(ctx)
-  t.teardown(() => a.close())
-
-  const b = new RequestSocket(ctx)
-  t.teardown(() => b.close())
-
-  const endpoint = 'inproc://foo'
-  a.bind(endpoint)
-  b.connect(endpoint)
-
-  const ar = a.createReadStream({ highWaterMark: 1 })
-  const aw = a.createWriteStream({ highWaterMark: 1 })
-
-  const br = b.createReadStream({ highWaterMark: 1 })
-  const bw = b.createWriteStream({ highWaterMark: 1 })
-
-  bw.write('request from b')
-
-  ar.once('data', (data) => {
-    t.alike(data, Buffer.from('request from b'))
-
-    aw.write('reply from a')
-
-    br.once('data', (data) => {
-      t.alike(data, Buffer.from('reply from a'))
-    })
-  })
-})

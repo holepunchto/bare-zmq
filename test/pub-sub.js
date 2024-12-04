@@ -33,7 +33,7 @@ test('publisher/subscriber socket, inproc', async (t) => {
   })
 })
 
-test('publisher/subscriber socket, inproc, stream', async (t) => {
+test('publisher/subscriber socket, inproc, read and write stream', async (t) => {
   t.plan(1)
 
   const ctx = new Context()

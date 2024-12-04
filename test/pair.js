@@ -32,7 +32,7 @@ test('pair socket, inproc', (t) => {
   })
 })
 
-test('pair socket, inproc, stream', (t) => {
+test('pair socket, inproc, read and write stream', (t) => {
   t.plan(1)
 
   const ctx = new Context()
@@ -52,6 +52,36 @@ test('pair socket, inproc, stream', (t) => {
   })
 
   a.createWriteStream().write('hello world')
+})
+
+test('pair socket, inproc, duplex stream', async (t) => {
+  t.plan(2)
+
+  const ctx = new Context()
+
+  const a = new PairSocket(ctx)
+  t.teardown(() => a.close())
+
+  const b = new PairSocket(ctx)
+  t.teardown(() => b.close())
+
+  const endpoint = 'inproc://foo'
+  b.bind(endpoint)
+  a.connect(endpoint)
+
+  const bs = b.createDuplexStream()
+  const as = a.createDuplexStream()
+
+  as.on('data', (data) => {
+    t.alike(data, Buffer.from('hello from b'))
+  })
+
+  bs.on('data', (data) => {
+    t.alike(data, Buffer.from('hello from a'))
+  })
+
+  as.write('hello from a')
+  bs.write('hello from b')
 })
 
 test('pair socket, inproc, threaded', (t) => {

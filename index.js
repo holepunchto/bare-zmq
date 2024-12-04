@@ -121,7 +121,7 @@ class ZMQSocket extends EventEmitter {
 function ZMQReadableSocket(Base) {
   return class ZMQReadableSocket extends Base {
     set readable(readable) {
-      this._poller._update(readable, this.writable)
+      this._poller._readable = readable
     }
 
     receive() {
@@ -146,7 +146,7 @@ function ZMQReadableSocket(Base) {
 function ZMQWritableSocket(Base) {
   return class ZMQWritableSocket extends Base {
     set writable(writable) {
-      this._poller._update(this.readable, writable)
+      this._poller._writable = writable
     }
 
     send(data, opts = {}) {
@@ -167,13 +167,43 @@ function ZMQWritableSocket(Base) {
   }
 }
 
-class ZMQDuplexSocket extends ZMQReadableSocket(ZMQWritableSocket(ZMQSocket)) {}
+function ZMQDuplexSocket(Base) {
+  return class ZMQDuplexSocket extends ZMQReadableSocket(
+    ZMQWritableSocket(Base)
+  ) {
+    createDuplexStream(opts) {
+      return new exports.DuplexStream(this, opts)
+    }
+  }
+}
+
+exports.ReadableSocket = ZMQReadableSocket(ZMQSocket)
+
+exports.WritableSocket = ZMQWritableSocket(ZMQSocket)
+
+exports.DuplexSocket = ZMQDuplexSocket(ZMQSocket)
 
 class ZMQPoller {
   constructor(socket) {
     this._events = 0
     this._closed = false
     this._handle = binding.createPoller(socket, socket._onpoll, socket._onclose)
+  }
+
+  get _readable() {
+    return (this._events & binding.UV_READABLE) !== 0
+  }
+
+  get _writable() {
+    return (this._events & binding.UV_WRITABLE) !== 0
+  }
+
+  set _readable(readable) {
+    this._update(readable, this._writable)
+  }
+
+  set _writable(writable) {
+    this._update(this._readable, writable)
   }
 
   _close() {
@@ -224,76 +254,113 @@ function ZMQStream(Base) {
   }
 }
 
-exports.ReadableStream = class ZMQReadableStream extends (
-  ZMQStream(stream.Readable)
-) {
-  constructor(socket, opts) {
-    super(socket, opts)
+function ZMQReadableStream(Base) {
+  return class ZMQReadableStream extends Base {
+    constructor(socket, opts) {
+      super(socket, opts)
 
-    this._socket.on('readable', this._onreadable.bind(this))
-  }
+      this._socket.on('readable', this._onreadable.bind(this))
+    }
 
-  _read() {
-    this._socket.readable = true
-  }
+    _read() {
+      while (true) {
+        const message = this._socket.receive()
 
-  _onreadable() {
-    while (true) {
-      const message = this._socket.receive()
+        if (message === null) {
+          this._socket.readable = true
+          break
+        }
 
-      if (message === null) return
+        if (this.push(message.data) === false) {
+          this._socket.readable = false
+          break
+        }
+      }
+    }
 
-      if (this.push(message.data) === false) {
-        this._socket.readable = false
-        break
+    _onreadable() {
+      while (true) {
+        const message = this._socket.receive()
+
+        if (message === null) return
+
+        if (this.push(message.data) === false) {
+          this._socket.readable = false
+          break
+        }
       }
     }
   }
 }
 
-exports.WritableStream = class ZMQWritableStream extends (
-  ZMQStream(stream.Writable)
-) {
-  constructor(socket, opts) {
-    super(socket, opts)
+function ZMQWritableStream(Base) {
+  return class ZMQWritableStream extends Base {
+    constructor(socket, opts) {
+      super(socket, opts)
 
-    this._queue = null
-    this._socket.on('writable', this._onwritable.bind(this))
-  }
-
-  _writev(chunks, cb) {
-    this._queue = [chunks, cb]
-    this._socket.writable = true
-  }
-
-  _onwritable() {
-    const [messages, cb] = this._queue
-
-    while (messages.length) {
-      const message = messages.shift()
-
-      if (this._socket.send(message.chunk) === false) {
-        messages.unshift(message)
-        break
-      }
-    }
-
-    if (messages.length === 0) {
       this._queue = null
-      this._socket.writable = false
-      cb(null)
+      this._socket.on('writable', this._onwritable.bind(this))
+    }
+
+    _writev(chunks, cb) {
+      while (chunks.length) {
+        const message = chunks.shift()
+
+        if (this._socket.send(message.chunk) === false) {
+          chunks.unshift(message)
+          break
+        }
+      }
+
+      if (chunks.length > 0) {
+        this._queue = [chunks, cb]
+        this._socket.writable = true
+      } else {
+        cb(null)
+      }
+    }
+
+    _onwritable() {
+      const [chunks, cb] = this._queue
+
+      while (chunks.length) {
+        const message = chunks.shift()
+
+        if (this._socket.send(message.chunk) === false) {
+          chunks.unshift(message)
+          break
+        }
+      }
+
+      if (chunks.length === 0) {
+        this._queue = null
+        this._socket.writable = false
+        cb(null)
+      }
     }
   }
 }
 
-exports.PairSocket = class ZMQPairSocket extends ZMQDuplexSocket {
+function ZMQDuplexStream(Base) {
+  return class ZMQDuplexStream extends ZMQReadableStream(
+    ZMQWritableStream(Base)
+  ) {}
+}
+
+exports.ReadableStream = ZMQReadableStream(ZMQStream(stream.Readable))
+
+exports.WritableStream = ZMQWritableStream(ZMQStream(stream.Writable))
+
+exports.DuplexStream = ZMQDuplexStream(ZMQStream(stream.Duplex))
+
+exports.PairSocket = class ZMQPairSocket extends exports.DuplexSocket {
   constructor(context) {
     super(context, binding.ZMQ_PAIR)
   }
 }
 
 exports.PublisherSocket = class ZMQPublisherSocket extends (
-  ZMQWritableSocket(ZMQSocket)
+  exports.WritableSocket
 ) {
   constructor(context) {
     super(context, binding.ZMQ_PUB)
@@ -301,7 +368,7 @@ exports.PublisherSocket = class ZMQPublisherSocket extends (
 }
 
 exports.SubscriberSocket = class ZMQSubscriberSocket extends (
-  ZMQReadableSocket(ZMQSocket)
+  exports.ReadableSocket
 ) {
   constructor(context) {
     super(context, binding.ZMQ_SUB)
@@ -316,13 +383,13 @@ exports.SubscriberSocket = class ZMQSubscriberSocket extends (
   }
 }
 
-exports.RequestSocket = class ZMQRequestSocket extends ZMQDuplexSocket {
+exports.RequestSocket = class ZMQRequestSocket extends exports.DuplexSocket {
   constructor(context) {
     super(context, binding.ZMQ_REQ)
   }
 }
 
-exports.ReplySocket = class ZMQReplySocket extends ZMQDuplexSocket {
+exports.ReplySocket = class ZMQReplySocket extends exports.DuplexSocket {
   constructor(context) {
     super(context, binding.ZMQ_REP)
   }
