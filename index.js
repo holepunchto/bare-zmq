@@ -75,11 +75,11 @@ class ZMQSocket extends EventEmitter {
   }
 
   get readable() {
-    return (this._poller._events & binding.UV_READABLE) !== 0
+    return this._poller._readable
   }
 
   get writable() {
-    return (this._poller._events & binding.UV_WRITABLE) !== 0
+    return this._poller._writable
   }
 
   bind(endpoint) {
