@@ -25,6 +25,6 @@ target_sources(
 
 target_link_libraries(
   ${bare_zmq}
-  PRIVATE
+  PUBLIC
     libzmq-static
 )
