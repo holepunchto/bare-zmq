@@ -303,17 +303,18 @@ function ZMQWritableStream(Base) {
     }
 
     _writev(chunks, cb) {
-      while (chunks.length) {
-        const message = chunks.shift()
+      let i = 0
+
+      for (const n = chunks.length; i < n; i++) {
+        const message = chunks[i]
 
         if (this._socket.send(message.chunk) === false) {
-          chunks.unshift(message)
           break
         }
       }
 
-      if (chunks.length > 0) {
-        this._queue = [chunks, cb]
+      if (i < chunks.length) {
+        this._queue = [chunks, i, cb]
         this._socket.writable = true
       } else {
         cb(null)
@@ -321,18 +322,19 @@ function ZMQWritableStream(Base) {
     }
 
     _onwritable() {
-      const [chunks, cb] = this._queue
+      const [chunks, i, cb] = this._queue
 
-      while (chunks.length) {
-        const message = chunks.shift()
+      for (const n = chunks.length; i < n; i++) {
+        const message = chunks[i]
 
         if (this._socket.send(message.chunk) === false) {
-          chunks.unshift(message)
           break
         }
       }
 
-      if (chunks.length === 0) {
+      if (i < chunks.length) {
+        this._queue = [chunks, i, cb]
+      } else {
         this._queue = null
         this._socket.writable = false
         cb(null)
