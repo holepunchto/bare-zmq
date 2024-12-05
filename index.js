@@ -322,7 +322,7 @@ function ZMQWritableStream(Base) {
     }
 
     _onwritable() {
-      const [chunks, i, cb] = this._queue
+      let [chunks, i, cb] = this._queue
 
       for (const n = chunks.length; i < n; i++) {
         const message = chunks[i]
