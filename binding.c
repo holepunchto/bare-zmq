@@ -30,8 +30,10 @@ typedef struct {
   js_ref_t *on_poll;
   js_ref_t *on_close;
 
-  js_deferred_teardown_t *teardown;
+  bool closing;
   bool exiting;
+
+  js_deferred_teardown_t *teardown;
 } bare_zmq_poller_t;
 
 static void
@@ -644,15 +646,15 @@ bare_zmq__on_poller_close(uv_handle_t *handle) {
   err = js_get_reference_value(env, poller->on_close, &on_close);
   assert(err == 0);
 
-  if (!poller->exiting) js_call_function(env, ctx, on_close, 0, NULL, NULL);
-
-  err = js_close_handle_scope(env, scope);
-  assert(err == 0);
-
   err = js_delete_reference(env, poller->on_poll);
   assert(err == 0);
 
   err = js_delete_reference(env, poller->ctx);
+  assert(err == 0);
+
+  if (!poller->exiting) js_call_function(env, ctx, on_close, 0, NULL, NULL);
+
+  err = js_close_handle_scope(env, scope);
   assert(err == 0);
 
   err = js_finish_deferred_teardown_callback(teardown);
@@ -664,6 +666,8 @@ bare_zmq__on_poller_teardown(js_deferred_teardown_t *handle, void *data) {
   bare_zmq_poller_t *poller = (bare_zmq_poller_t *) data;
 
   poller->exiting = true;
+
+  if (poller->closing) return;
 
   uv_close((uv_handle_t *) &poller->handle, bare_zmq__on_poller_close);
 }
@@ -691,6 +695,7 @@ bare_zmq_poller_create(js_env_t *env, js_callback_info_t *info) {
   assert(err == 0);
 
   poller->env = env;
+  poller->closing = false;
   poller->exiting = false;
 
   size_t len = sizeof(uv_os_sock_t);
@@ -765,6 +770,8 @@ bare_zmq_poller_close(js_env_t *env, js_callback_info_t *info) {
 
   err = uv_poll_stop(&poller->handle);
   assert(err == 0);
+
+  poller->closing = true;
 
   uv_close((uv_handle_t *) &poller->handle, bare_zmq__on_poller_close);
 
