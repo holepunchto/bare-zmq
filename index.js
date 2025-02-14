@@ -120,6 +120,10 @@ class ZMQSocket extends EventEmitter {
 
 function ZMQReadableSocket(Base) {
   return class ZMQReadableSocket extends Base {
+    get readable() {
+      return this._poller._readable
+    }
+
     set readable(readable) {
       this._poller._readable = readable
     }
@@ -145,6 +149,10 @@ function ZMQReadableSocket(Base) {
 
 function ZMQWritableSocket(Base) {
   return class ZMQWritableSocket extends Base {
+    get writable() {
+      return this._poller._writable
+    }
+
     set writable(writable) {
       this._poller._writable = writable
     }
@@ -271,8 +279,10 @@ function ZMQReadableStream(Base) {
           break
         }
 
+        const readable = this._socket.readable
+
         if (this.push(message.data) === false) {
-          this._socket.readable = false
+          if (this._socket.readable === readable) this._socket.readable = false
           break
         }
       }
@@ -284,8 +294,10 @@ function ZMQReadableStream(Base) {
 
         if (message === null) return
 
+        const readable = this._socket.readable
+
         if (this.push(message.data) === false) {
-          this._socket.readable = false
+          if (this._socket.readable === readable) this._socket.readable = false
           break
         }
       }
