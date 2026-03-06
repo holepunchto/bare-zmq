@@ -176,9 +176,7 @@ function ZMQWritableSocket(Base) {
 }
 
 function ZMQDuplexSocket(Base) {
-  return class ZMQDuplexSocket extends ZMQReadableSocket(
-    ZMQWritableSocket(Base)
-  ) {
+  return class ZMQDuplexSocket extends ZMQReadableSocket(ZMQWritableSocket(Base)) {
     createDuplexStream(opts) {
       return new exports.DuplexStream(this, opts)
     }
@@ -243,9 +241,7 @@ function ZMQStream(Base) {
       super(opts)
 
       this._socket = socket
-      this._socket
-        .on('error', this._onerror.bind(this))
-        .on('close', this._onclose.bind(this))
+      this._socket.on('error', this._onerror.bind(this)).on('close', this._onclose.bind(this))
     }
 
     _destroy(err, cb) {
@@ -356,9 +352,7 @@ function ZMQWritableStream(Base) {
 }
 
 function ZMQDuplexStream(Base) {
-  return class ZMQDuplexStream extends ZMQReadableStream(
-    ZMQWritableStream(Base)
-  ) {}
+  return class ZMQDuplexStream extends ZMQReadableStream(ZMQWritableStream(Base)) {}
 }
 
 exports.ReadableStream = ZMQReadableStream(ZMQStream(stream.Readable))
@@ -373,17 +367,13 @@ exports.PairSocket = class ZMQPairSocket extends exports.DuplexSocket {
   }
 }
 
-exports.PublisherSocket = class ZMQPublisherSocket extends (
-  exports.WritableSocket
-) {
+exports.PublisherSocket = class ZMQPublisherSocket extends exports.WritableSocket {
   constructor(context) {
     super(context, binding.ZMQ_PUB)
   }
 }
 
-exports.SubscriberSocket = class ZMQSubscriberSocket extends (
-  exports.ReadableSocket
-) {
+exports.SubscriberSocket = class ZMQSubscriberSocket extends exports.ReadableSocket {
   constructor(context) {
     super(context, binding.ZMQ_SUB)
   }
