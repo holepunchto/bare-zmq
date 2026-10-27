@@ -399,12 +399,6 @@ exports.ReplySocket = class ZMQReplySocket extends exports.DuplexSocket {
   }
 }
 
-function getSocketOption(socket, option, data = Buffer.alloc(1024)) {
-  const length = binding.getSocketOption(socket, option, data)
-
-  return data.subarray(0, length)
-}
-
 function setSocketOption(socket, option, data) {
   if (typeof data === 'string') data = Buffer.from(data)
 

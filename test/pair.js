@@ -1,4 +1,5 @@
 const test = require('brittle')
+const Thread = require('bare-thread')
 const { Context, PairSocket } = require('..')
 
 test('pair socket, inproc', (t) => {
@@ -102,22 +103,7 @@ test('pair socket, inproc, threaded', (t) => {
 
   const data = ctx.toExternal()
 
-  const thread = Bare.Thread.create(__filename, { data }, (external) => {
-    const { Context, PairSocket } = require('..')
-
-    const ctx = Context.from(external)
-
-    const a = new PairSocket(ctx)
-    a.connect('inproc://foo')
-
-    a.writable = true
-    a.on('writable', () => {
-      const sent = a.send('hello world')
-      if (sent === false) return
-      a.writable = false
-      a.close()
-    })
-  })
+  const thread = new Thread(require.resolve('./fixtures/pair-threaded'), { data })
 
   thread.join()
 })

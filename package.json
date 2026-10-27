@@ -17,7 +17,9 @@
   ],
   "addon": true,
   "scripts": {
-    "test": "prettier . --check && bare test.js"
+    "format": "prettier --write . && lunte --fix",
+    "lint": "prettier --check . && lunte",
+    "test": "brittle-bare --coverage test.js"
   },
   "repository": {
     "type": "git",
@@ -34,9 +36,11 @@
     "bare-stream": "^2.4.2"
   },
   "devDependencies": {
+    "bare-thread": "^1.4.0",
     "brittle": "^3.4.0",
     "cmake-bare": "^1.1.2",
     "cmake-fetch": "^1.1.1",
+    "lunte": "^1.8.6",
     "prettier": "^3.3.3",
     "prettier-config-holepunch": "^2.0.0"
   }

@@ -16,9 +16,15 @@ typedef struct {
 } bare_zmq_context_t;
 
 typedef struct {
+  bare_zmq_context_t *context;
+
+  bool released;
+} bare_zmq_context_ref_t;
+
+typedef struct {
   void *handle;
 
-  atomic_int refs;
+  bool closed;
 } bare_zmq_socket_t;
 
 typedef struct {
@@ -37,10 +43,14 @@ typedef struct {
 } bare_zmq_poller_t;
 
 static void
-bare_zmq__on_context_teardown(void *data) {
+bare_zmq__context_unref(bare_zmq_context_ref_t *ref) {
   int err;
 
-  bare_zmq_context_t *context = (bare_zmq_context_t *) data;
+  if (ref->released) return;
+
+  ref->released = true;
+
+  bare_zmq_context_t *context = ref->context;
 
   if (--context->refs == 0) {
     err = zmq_ctx_shutdown(context->handle);
@@ -54,12 +64,39 @@ bare_zmq__on_context_teardown(void *data) {
 }
 
 static void
+bare_zmq__on_context_teardown(void *data) {
+  bare_zmq__context_unref((bare_zmq_context_ref_t *) data);
+}
+
+static void
 bare_zmq__on_context_finalize(js_env_t *env, void *data, void *finalize_hint) {
   int err;
 
-  bare_zmq__on_context_teardown(data);
+  bare_zmq_context_ref_t *ref = (bare_zmq_context_ref_t *) data;
 
-  err = js_remove_teardown_callback(env, bare_zmq__on_context_teardown, data);
+  if (!ref->released) {
+    err = js_remove_teardown_callback(env, bare_zmq__on_context_teardown, data);
+    assert(err == 0);
+
+    bare_zmq__context_unref(ref);
+  }
+
+  free(ref);
+}
+
+static void
+bare_zmq__context_wrap(js_env_t *env, js_value_t *wrapper, bare_zmq_context_t *context) {
+  int err;
+
+  bare_zmq_context_ref_t *ref = malloc(sizeof(bare_zmq_context_ref_t));
+
+  ref->context = context;
+  ref->released = false;
+
+  err = js_wrap(env, wrapper, ref, bare_zmq__on_context_finalize, NULL, NULL);
+  assert(err == 0);
+
+  err = js_add_teardown_callback(env, bare_zmq__on_context_teardown, (void *) ref);
   assert(err == 0);
 }
 
@@ -91,11 +128,7 @@ bare_zmq_context_create(js_env_t *env, js_callback_info_t *info) {
   context->handle = handle;
   context->refs = 1;
 
-  err = js_wrap(env, argv[0], context, bare_zmq__on_context_finalize, NULL, NULL);
-  assert(err == 0);
-
-  err = js_add_teardown_callback(env, bare_zmq__on_context_teardown, (void *) context);
-  assert(err == 0);
+  bare_zmq__context_wrap(env, argv[0], context);
 
   return NULL;
 }
@@ -112,14 +145,16 @@ bare_zmq_context_destroy(js_env_t *env, js_callback_info_t *info) {
 
   assert(argc == 1);
 
-  bare_zmq_context_t *context;
-  err = js_remove_wrap(env, argv[0], (void **) &context);
+  bare_zmq_context_ref_t *ref;
+  err = js_remove_wrap(env, argv[0], (void **) &ref);
   assert(err == 0);
 
-  err = js_remove_teardown_callback(env, bare_zmq__on_context_teardown, (void *) context);
+  err = js_remove_teardown_callback(env, bare_zmq__on_context_teardown, (void *) ref);
   assert(err == 0);
 
-  bare_zmq__on_context_teardown((void *) context);
+  bare_zmq__context_unref(ref);
+
+  free(ref);
 
   return NULL;
 }
@@ -136,9 +171,11 @@ bare_zmq_context_serialize(js_env_t *env, js_callback_info_t *info) {
 
   assert(argc == 1);
 
-  bare_zmq_context_t *context;
-  err = js_unwrap(env, argv[0], (void **) &context);
+  bare_zmq_context_ref_t *ref;
+  err = js_unwrap(env, argv[0], (void **) &ref);
   assert(err == 0);
+
+  bare_zmq_context_t *context = ref->context;
 
   context->refs++;
 
@@ -165,37 +202,42 @@ bare_zmq_context_deserialize(js_env_t *env, js_callback_info_t *info) {
   err = js_get_value_external(env, argv[0], (void **) &context);
   assert(err == 0);
 
-  err = js_wrap(env, argv[1], context, bare_zmq__on_context_finalize, NULL, NULL);
-  assert(err == 0);
-
-  err = js_add_teardown_callback(env, bare_zmq__on_context_teardown, (void *) context);
-  assert(err == 0);
+  bare_zmq__context_wrap(env, argv[1], context);
 
   return NULL;
 }
 
 static void
-bare_zmq__on_socket_teardown(void *data) {
+bare_zmq__socket_close(bare_zmq_socket_t *socket) {
   int err;
 
-  bare_zmq_socket_t *socket = (bare_zmq_socket_t *) data;
+  if (socket->closed) return;
 
-  if (--socket->refs == 0) {
-    err = zmq_close(socket->handle);
-    assert(err == 0);
+  socket->closed = true;
 
-    free(socket);
-  }
+  err = zmq_close(socket->handle);
+  assert(err == 0);
+}
+
+static void
+bare_zmq__on_socket_teardown(void *data) {
+  bare_zmq__socket_close((bare_zmq_socket_t *) data);
 }
 
 static void
 bare_zmq__on_socket_finalize(js_env_t *env, void *data, void *finalize_hint) {
   int err;
 
-  bare_zmq__on_socket_teardown(data);
+  bare_zmq_socket_t *socket = (bare_zmq_socket_t *) data;
 
-  err = js_remove_teardown_callback(env, bare_zmq__on_socket_teardown, data);
-  assert(err == 0);
+  if (!socket->closed) {
+    err = js_remove_teardown_callback(env, bare_zmq__on_socket_teardown, data);
+    assert(err == 0);
+
+    bare_zmq__socket_close(socket);
+  }
+
+  free(socket);
 }
 
 static js_value_t *
@@ -210,15 +252,15 @@ bare_zmq_socket_create(js_env_t *env, js_callback_info_t *info) {
 
   assert(argc == 3);
 
-  bare_zmq_context_t *context;
-  err = js_unwrap(env, argv[1], (void **) &context);
+  bare_zmq_context_ref_t *ref;
+  err = js_unwrap(env, argv[1], (void **) &ref);
   assert(err == 0);
 
   int32_t type;
   err = js_get_value_int32(env, argv[2], &type);
   assert(err == 0);
 
-  void *handle = zmq_socket(context->handle, type);
+  void *handle = zmq_socket(ref->context->handle, type);
 
   if (handle == NULL) {
     err = zmq_errno();
@@ -232,7 +274,7 @@ bare_zmq_socket_create(js_env_t *env, js_callback_info_t *info) {
   bare_zmq_socket_t *socket = malloc(sizeof(bare_zmq_socket_t));
 
   socket->handle = handle;
-  socket->refs = 1;
+  socket->closed = false;
 
   err = js_wrap(env, argv[0], (void *) socket, bare_zmq__on_socket_finalize, NULL, NULL);
   assert(err == 0);
@@ -262,7 +304,9 @@ bare_zmq_socket_destroy(js_env_t *env, js_callback_info_t *info) {
   err = js_remove_teardown_callback(env, bare_zmq__on_socket_teardown, (void *) socket);
   assert(err == 0);
 
-  bare_zmq__on_socket_teardown((void *) socket);
+  bare_zmq__socket_close(socket);
+
+  free(socket);
 
   return NULL;
 }
